@@ -3,7 +3,7 @@ module idac-haruka-bot
 go 1.25.0
 
 require (
-	github.com/Duke40199/sega-idac-client v0.0.0-00010101000000-000000000000
+	github.com/Duke40199/sega-idac-client v0.1.0
 	github.com/PuerkitoBio/goquery v1.12.0
 	github.com/bwmarrin/discordgo v0.29.0
 	github.com/google/uuid v1.6.0
