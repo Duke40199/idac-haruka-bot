@@ -3,7 +3,7 @@ module idac-haruka-bot
 go 1.25.0
 
 require (
-	github.com/Duke40199/sega-idac-client v0.1.0
+	//github.com/Duke40199/sega-idac-client v0.0.0-00010101000000-000000000000
 	github.com/PuerkitoBio/goquery v1.12.0
 	github.com/bwmarrin/discordgo v0.29.0
 	github.com/google/uuid v1.6.0
@@ -12,6 +12,8 @@ require (
 	golang.org/x/text v0.37.0
 	google.golang.org/grpc v1.68.1
 )
+
+require github.com/Duke40199/sega-idac-client v0.0.0-20261111100026-9cf6d5c05d67
 
 require (
 	github.com/andybalholm/cascadia v1.3.3 // indirect
@@ -31,4 +33,4 @@ require (
 //   go mod edit -dropreplace=github.com/Duke40199/sega-idac-client
 //   go get github.com/Duke40199/sega-idac-client@v0.1.0
 // (and set GOPRIVATE=github.com/Duke40199/* for the private module).
-replace github.com/Duke40199/sega-idac-client => ../sega-idac-client
+// replace github.com/Duke40199/sega-idac-client => ../sega-idac-client
