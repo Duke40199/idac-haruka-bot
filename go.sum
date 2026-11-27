@@ -1,3 +1,5 @@
+github.com/Duke40199/sega-idac-client v0.0.0-20261111100026-9cf6d5c05d67 h1:0Qi6w4l3wv4Ae9b/X5FK0hN8Ng5IHO1UC/zZVpKQbkI=
+github.com/Duke40199/sega-idac-client v0.0.0-20261111100026-9cf6d5c05d67/go.mod h1:cN0mZBrxGI+SCziXKCJvg3yAD5V7krSegFambwGSogY=
 github.com/PuerkitoBio/goquery v1.12.0 h1:pAcL4g3WRXekcB9AU/y1mbKez2dbY2AajVhtkO8RIBo=
 github.com/PuerkitoBio/goquery v1.12.0/go.mod h1:802ej+gV2y7bbIhOIoPY5sT183ZW0YFofScC4q/hIpQ=
 github.com/andybalholm/cascadia v1.3.3 h1:AG2YHrzJIm4BZ19iwJ/DAua6Btl3IwJX+VI4kktS1LM=
