@@ -1,0 +1,89 @@
+package all_net
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"strings"
+	"time"
+
+	"idac-haruka-bot/internal/config"
+	"idac-haruka-bot/internal/domain/entity"
+	"idac-haruka-bot/internal/domain/port"
+	"idac-haruka-bot/pkg/logger"
+
+	"github.com/PuerkitoBio/goquery"
+)
+
+// allNetHTTPTimeout bounds every AllNet request so a stalled endpoint can't hang
+// the caller. A caller-supplied ctx with an earlier deadline still wins.
+const allNetHTTPTimeout = 15 * time.Second
+
+type AllNetClient struct {
+	config     config.Config
+	httpClient *http.Client
+}
+
+func NewAllNetClient(config config.Config) port.AllNetClient {
+	return &AllNetClient{
+		config:     config,
+		httpClient: &http.Client{Timeout: allNetHTTPTimeout},
+	}
+}
+
+func (c *AllNetClient) GetListStore(ctx context.Context, gameCode, languageCode, areaCode string) ([]entity.StoreLocation, string, error) {
+	url := c.config.GetAllNetClientCfg().AllNetHost + c.config.GetAllNetClientCfg().GetListStoreLocationURLPath
+	url = strings.Replace(url, ":gameCode", gameCode, 1)
+	url = strings.Replace(url, ":languageCode", languageCode, 1)
+	url = strings.Replace(url, ":areaCode", areaCode, 1)
+	logger.Debug(ctx, fmt.Sprintf("request url: %s", url))
+
+	// Use NewRequestWithContext to respect the provided ctx
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Execute the request
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, "", fmt.Errorf("unexpected status code %d", resp.StatusCode)
+	}
+
+	// Parse the HTML response body directly with goquery
+	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to parse HTML: %w", err)
+	}
+
+	var data []entity.StoreLocation
+
+	// Iterate over each list item in the store list
+	doc.Find("ul.store_list li").Each(func(i int, s *goquery.Selection) {
+		// Extract Name
+		name := strings.TrimSpace(s.Find("span.store_name").Text())
+
+		// Extract Address (optional, but easily available in your HTML payload!)
+		address := strings.TrimSpace(s.Find("span.store_address").Text())
+
+		// Ensure we don't append empty entries
+		if name != "" {
+			store := entity.StoreLocation{
+				Name:    name,    // Replace with your actual struct field name
+				Address: address, // Replace or remove based on your struct
+			}
+			data = append(data, store)
+		}
+	})
+	// Find the first span inside the h3 within the content_box
+	areaName := doc.Find("div.content_box h3 span").First().Text()
+	areaName = strings.TrimSpace(areaName)
+
+	logger.Debug(ctx, fmt.Sprintf("parsed area: %s", areaName))
+	return data, areaName, nil
+}

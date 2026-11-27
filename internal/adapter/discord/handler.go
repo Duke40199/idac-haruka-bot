@@ -1,0 +1,177 @@
+package discord
+
+import (
+	"bytes"
+	"context"
+	_ "embed"
+	"strings"
+
+	"idac-haruka-bot/internal/domain/entity"
+	"idac-haruka-bot/internal/domain/port"
+	"idac-haruka-bot/internal/domain/service"
+	"idac-haruka-bot/pkg/logger"
+
+	"github.com/bwmarrin/discordgo"
+)
+
+//go:embed resource/unauthorized.gif
+var unauthorizedGif []byte
+
+type Handler struct {
+	OwnerID string
+	Session *discordgo.Session
+	// db repositories
+	AliasRepo          port.AliasRepository
+	OBRankingCfgRepo   port.OBRankingCfgRepository
+	RankingCfgRepo     port.RankingCfgRepository
+	CarRepo            port.CarRepository
+	TATimeMetadataRepo port.TATimeMetadataRepository
+	CfsStateRepo       port.CfsStateRepository
+	CommandGuideRepo   port.CommandGuideRepository
+	// internal services
+	MetaLogic                     *service.MetaLogicService
+	IDACStoreLocationService      port.IDACStoreLocationService
+	IDACCarService                port.IDACCarService
+	IDACTimeAttackMetadataService port.IDACTimeAttackService
+	IdacAreaService               port.IDACAreaService
+	OBRankingService              port.IDACOBRankingService
+	TeamService                   port.IDACTeamService
+	PlayerService                 port.IDACPlayerService
+	OBMetaService                 port.IDACOBMetaService
+	// clients
+	SegaClient   port.SegaIDACClient
+	AllNetClient port.AllNetClient
+	// local memory
+	CarChoices   []*entity.CarMetadata
+	AreaMetadata []entity.IDACAreaMetadata
+	TrackChoices map[string]string
+	// CommandGuides caches the enabled help guides for autocomplete only; the
+	// /idac help response itself reads live from the DB (see handler_help.go).
+	CommandGuides []entity.CommandGuide
+	// pagination state for interactive, button-paged messages
+	pagination *paginationStore
+}
+
+// NewHandler creates our controller
+func NewHandler(
+	s *discordgo.Session,
+	ownerID string,
+	// db repositories
+	aliasRepo port.AliasRepository,
+	obRankingCfgRepo port.OBRankingCfgRepository,
+	rankingCfgRepo port.RankingCfgRepository,
+	carRepo port.CarRepository,
+	taTimeMetadataRepo port.TATimeMetadataRepository,
+	cfsStateRepo port.CfsStateRepository,
+	commandGuideRepo port.CommandGuideRepository,
+	// internal services
+	metaLogic *service.MetaLogicService,
+	storeLocationService port.IDACStoreLocationService,
+	idacCarService port.IDACCarService,
+	idacTimeAttackService port.IDACTimeAttackService,
+	idacAreaService port.IDACAreaService,
+	obRankingService port.IDACOBRankingService,
+	teamService port.IDACTeamService,
+	playerService port.IDACPlayerService,
+	obMetaService port.IDACOBMetaService,
+	// clients
+	segaClient port.SegaIDACClient,
+	allNetClient port.AllNetClient,
+
+) *Handler {
+	discordHandler := &Handler{
+		Session: s,
+		// db repositories
+		AliasRepo:          aliasRepo,
+		OBRankingCfgRepo:   obRankingCfgRepo,
+		RankingCfgRepo:     rankingCfgRepo,
+		CarRepo:            carRepo,
+		TATimeMetadataRepo: taTimeMetadataRepo,
+		CfsStateRepo:       cfsStateRepo,
+		CommandGuideRepo:   commandGuideRepo,
+		// internal services
+		MetaLogic:                     metaLogic,
+		IDACStoreLocationService:      storeLocationService,
+		IDACCarService:                idacCarService,
+		IDACTimeAttackMetadataService: idacTimeAttackService,
+		IdacAreaService:               idacAreaService,
+		OBRankingService:              obRankingService,
+		TeamService:                   teamService,
+		PlayerService:                 playerService,
+		OBMetaService:                 obMetaService,
+		// clients
+		SegaClient:   segaClient,
+		AllNetClient: allNetClient,
+		OwnerID:      ownerID,
+		pagination:   newPaginationStore(),
+	}
+	idacAreaMetadata, err := discordHandler.IdacAreaService.GetAreaMetadata(context.Background())
+	if err != nil {
+		panic("cannot get idac area metadata" + err.Error())
+	}
+	discordHandler.AreaMetadata = idacAreaMetadata
+	discordHandler.CarChoices = discordHandler.PreloadListCarSelection()
+	discordHandler.TrackChoices = entity.MergedTrackRegistry
+	// Preload the guide list for autocomplete. Help is non-critical, so a failure
+	// here just leaves the autocomplete empty rather than taking down the bot.
+	if guides, err := discordHandler.CommandGuideRepo.ListEnabled(context.Background()); err != nil {
+		logger.Error(context.Background(), "error preloading command guides", err)
+	} else {
+		discordHandler.CommandGuides = guides
+	}
+	return discordHandler
+}
+
+func (h *Handler) PreloadListCarSelection() []*entity.CarMetadata {
+	var carChoices []*entity.CarMetadata
+	listCarWithSpecIDs, err := h.CarRepo.GetListCarWithAggregatedSpecs(context.Background())
+	if err != nil {
+		logger.Error(context.Background(), "error getting list car selection", err)
+		return carChoices
+	}
+	for _, result := range listCarWithSpecIDs {
+		result.SearchBlob = strings.ToLower(result.Maker + result.Name + result.ModelCode)
+	}
+	return listCarWithSpecIDs
+}
+
+func (h *Handler) HandleStatus(i *discordgo.InteractionCreate) {
+	h.Session.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: "Up and running, desuwa~",
+		},
+	})
+}
+
+// IsRequestFromOwner checks if the user is the owner.
+// If NOT, it sends the unauthorized GIF/Message and returns false.
+// If YES, it returns true.
+func (h *Handler) IsRequestFromOwner(s *discordgo.Session, i *discordgo.InteractionCreate) bool {
+	// Owner ID comes from config (DISCORD_OWNER_ID). If it's unset, no one is
+	// treated as owner, so owner-gated commands fail closed.
+	if user := interactionUser(i); user != nil && h.OwnerID != "" && user.ID == h.OwnerID {
+		return true
+	}
+	// 1. Respond immediately with just the GIF
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: "Are you the tea brewer? Let's check that real quick.",
+			Files: []*discordgo.File{
+				{Name: "unauthorized.gif", Reader: bytes.NewReader(unauthorizedGif)},
+			},
+		},
+	})
+
+	// 2. Send the text as a Follow-up (appears underneath)
+	s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+		Content: "Guess not. You might have used a command which is only for the bot's creator." +
+			" If you need help, feel free to contact @spacepotato4109.",
+	})
+	return false
+}
+
+func (h *Handler) SendDeferredError(i *discordgo.InteractionCreate, msg string) {
+	h.Session.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{Content: &msg})
+}

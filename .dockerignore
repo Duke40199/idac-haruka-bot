@@ -1,0 +1,18 @@
+# Keep the build context small and secrets out of the image.
+.git
+.gitignore
+.vscode
+.idea
+.env
+.env.local
+*.env.local
+*.log
+/haruka
+/bin/
+*.test
+*.out
+coverage.*
+Dockerfile
+.dockerignore
+README*.md
+LICENSE

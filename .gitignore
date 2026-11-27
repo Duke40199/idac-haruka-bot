@@ -1,0 +1,40 @@
+# Compiled binaries
+/mckween
+/bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binaries & coverage output
+*.test
+*.out
+coverage.*
+
+# Go workspace files
+go.work
+go.work.sum
+
+# Vendored dependencies (if ever used)
+/vendor/
+
+# Environment & secrets (only .env.example is committed)
+.env
+.env.local
+*.env.local
+
+# Runtime/state files
+*.log
+
+# Editors / IDEs
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db
